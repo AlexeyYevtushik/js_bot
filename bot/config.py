@@ -8,3 +8,12 @@ CHAT_ID = os.getenv("CHAT_ID")
 
 if not BOT_TOKEN:
     raise RuntimeError("BOT_TOKEN not set")
+
+# -------------------------
+# Known Wi-Fi networks
+# SSID : PASSWORD
+# -------------------------
+KNOWN_WIFI = {
+    "testtest": "test123456",
+    "HomeNet": "home_password_here",
+}
