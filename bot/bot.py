@@ -1,13 +1,24 @@
-import asyncio
-from telegram import Bot
-from bot.config import BOT_TOKEN, CHAT_ID
+from telegram.ext import (
+    ApplicationBuilder,
+    CommandHandler,
+    MessageHandler,
+    filters,
+)
 
-async def send_test_message():
-    bot = Bot(token=BOT_TOKEN)
-    await bot.send_message(
-        chat_id=CHAT_ID,
-        text="✅ Raspberry Pi Wi-Fi Bot started successfully"
-    )
+from bot.config import BOT_TOKEN
+from bot.handlers import start, available_wifi, handle_text
+
+
+def main():
+    app = ApplicationBuilder().token(BOT_TOKEN).build()
+
+    app.add_handler(CommandHandler("start", start))
+    app.add_handler(MessageHandler(filters.Regex("^wifi$"), available_wifi))
+    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_text))
+
+    print("✅ Telegram Wi-Fi Bot running")
+    app.run_polling()
+
 
 if __name__ == "__main__":
-    asyncio.run(send_test_message())
+    main()

@@ -35,7 +35,7 @@ A Python-based Telegram bot for Raspberry Pi 4 that automatically manages Wi-Fi 
 
 ## 📲 Telegram Commands
 
-### `Available wi-fi`
+### `wifi`
 Returns a list of available networks:
 
 HomeWiFi - 85% - Known
