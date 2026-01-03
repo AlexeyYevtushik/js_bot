@@ -13,7 +13,7 @@ def main():
     app = ApplicationBuilder().token(BOT_TOKEN).build()
 
     app.add_handler(CommandHandler("start", start))
-    app.add_handler(MessageHandler(filters.Regex("^wifi$"), available_wifi))
+    app.add_handler(MessageHandler(filters.Regex("(?i)^wi-?fi$"), available_wifi))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_text))
 
     print("✅ Telegram Wi-Fi Bot running")
