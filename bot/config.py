@@ -15,5 +15,5 @@ if not BOT_TOKEN:
 # -------------------------
 KNOWN_WIFI = {
     "testtest": "test123456",
-    "HomeNet": "home_password_here",
+    "wls": "12345678"
 }
