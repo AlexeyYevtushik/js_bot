@@ -5,16 +5,18 @@ from telegram.ext import (
     MessageHandler,
     filters,
 )
+
 from bot.config import BOT_TOKEN
 from bot.handlers import start, handle_text
-from bot.wifi_manager import scan_wifi, current_connected_ssid
+from bot.wifi_manager import scan_wifi, current_connected_ssid, has_internet
+from bot.notifier import notify
+
 
 # New handler for "Wi-Fi" messages
 async def available_wifi(update, context):
     networks = scan_wifi()
     current_ssid = current_connected_ssid()
 
-    # Deduplicate SSIDs and take strongest signal
     ssid_dict = {}
     for net in networks:
         ssid = net["ssid"]
@@ -23,9 +25,11 @@ async def available_wifi(update, context):
         if ssid not in ssid_dict or signal > ssid_dict[ssid]["signal"]:
             ssid_dict[ssid] = {"signal": signal, "known": known}
 
-    # Build message
-    msg = "Available Wi-Fi networks:\n"
-    for i, (ssid, info) in enumerate(sorted(ssid_dict.items(), key=lambda x: x[1]["signal"], reverse=True), start=1):
+    msg = "📡 Available Wi-Fi networks:\n"
+    for i, (ssid, info) in enumerate(
+        sorted(ssid_dict.items(), key=lambda x: x[1]["signal"], reverse=True),
+        start=1,
+    ):
         status = "Known" if info["known"] else "Unknown"
         connected = " (Connected)" if ssid == current_ssid else ""
         msg += f"{i}. {ssid} ({info['signal']}%) [{status}]{connected}\n"
@@ -34,12 +38,21 @@ async def available_wifi(update, context):
 
 
 def main():
+    # 🔔 Startup notification
+    notify("🤖 Telegram Wi-Fi Bot started")
+
+    if has_internet():
+        ssid = current_connected_ssid()
+        notify(
+            f"🌐 Internet connection exists. Connected Wi-Fi SSID: {ssid or 'Unknown'}"
+        )
+    else:
+        notify("⚠️ No internet connection")
+
     app = ApplicationBuilder().token(BOT_TOKEN).build()
 
     app.add_handler(CommandHandler("start", start))
-    # This handles messages like "wifi" or "wi-fi" (case-insensitive)
     app.add_handler(MessageHandler(filters.Regex("(?i)^wi-?fi$"), available_wifi))
-    # All other text messages go to your generic handler
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_text))
 
     print("✅ Telegram Wi-Fi Bot running")
