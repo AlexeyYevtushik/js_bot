@@ -1,11 +1,13 @@
+# bot/wifi_manager.py
 import subprocess
+import time
 import re
-from bot.config import KNOWN_WIFI
+from bot.config import KNOWN_WIFI, INTERNET_CHECK_HOST, INTERNET_CHECK_TIMEOUT
 
 IW_INTERFACE = "wlan0"
 
 
-def _run_iw_scan() -> str:
+def scan_wifi():
     try:
         result = subprocess.run(
             ["sudo", "iw", "dev", IW_INTERFACE, "scan"],
@@ -13,58 +15,93 @@ def _run_iw_scan() -> str:
             text=True,
             timeout=15,
         )
-        return result.stdout
     except Exception:
-        return ""
+        return []
 
-
-def scan_wifi():
-    raw = _run_iw_scan()
-
-    # Temporary storage: SSID -> best RSSI
-    ssid_map: dict[str, float] = {}
-
+    ssid_map = {}
     current_signal = None
-    current_ssid = None
 
-    for line in raw.splitlines():
+    for line in result.stdout.splitlines():
         line = line.strip()
 
-        # signal level
         if line.startswith("signal:"):
-            match = re.search(r"signal:\s*(-?\d+\.\d+)", line)
-            if match:
-                current_signal = float(match.group(1))
+            m = re.search(r"signal:\s*(-?\d+\.\d+)", line)
+            if m:
+                current_signal = float(m.group(1))
 
-        # SSID
-        elif line.startswith("SSID:"):
-            current_ssid = line.replace("SSID:", "").strip()
-
-            if not current_ssid or current_signal is None:
+        elif line.startswith("SSID:") and current_signal is not None:
+            ssid = line.replace("SSID:", "").strip()
+            if not ssid:
                 continue
 
-            # keep strongest signal per SSID
-            if (
-                current_ssid not in ssid_map
-                or current_signal > ssid_map[current_ssid]
-            ):
-                ssid_map[current_ssid] = current_signal
+            if ssid not in ssid_map or current_signal > ssid_map[ssid]:
+                ssid_map[ssid] = current_signal
 
             current_signal = None
-            current_ssid = None
 
-    result = []
-
+    networks = []
     for ssid, rssi in ssid_map.items():
-        result.append({
+        networks.append({
             "ssid": ssid,
             "signal": _signal_to_percent(int(rssi)),
             "known": ssid in KNOWN_WIFI,
         })
 
-    # Sort strongest first
-    result.sort(key=lambda x: x["signal"], reverse=True)
-    return result
+    networks.sort(key=lambda x: x["signal"], reverse=True)
+    return networks
+
+
+def connect_wifi(ssid: str, password: str) -> bool:
+    try:
+        # Remove existing connection if present
+        subprocess.run(
+            ["nmcli", "connection", "delete", ssid],
+            capture_output=True
+        )
+
+        cmd = ["nmcli", "dev", "wifi", "connect", ssid, "password", password]
+        result = subprocess.run(cmd, capture_output=True, text=True)
+
+        if result.returncode != 0:
+            return False
+
+        time.sleep(5)
+        return True
+
+    except Exception:
+        return False
+
+
+def has_internet() -> bool:
+    try:
+        result = subprocess.run(
+            ["ping", "-c", "1", "-W", str(INTERNET_CHECK_TIMEOUT), INTERNET_CHECK_HOST],
+            capture_output=True,
+        )
+        return result.returncode == 0
+    except Exception:
+        return False
+
+
+def current_connected_ssid() -> str | None:
+    """
+    Returns the currently connected Wi-Fi SSID, or None if not connected.
+    """
+    try:
+        result = subprocess.run(
+            ["nmcli", "-t", "-f", "ACTIVE,SSID", "dev", "wifi"],
+            capture_output=True,
+            text=True,
+        )
+
+        for line in result.stdout.splitlines():
+            if line.startswith("yes:"):
+                return line.split("yes:")[1].strip()
+
+    except Exception:
+        pass
+
+    return None
 
 
 def _signal_to_percent(rssi: int) -> int:

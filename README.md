@@ -3,6 +3,48 @@
 A Python-based Telegram bot for Raspberry Pi 4 that automatically manages Wi-Fi connections and allows manual control via Telegram.
 
 ---
+## 👤 Who This Project Is For
+
+This project is intended for:
+
+- Raspberry Pi users who run their device headless (no monitor/keyboard)
+- Users who manage Wi-Fi remotely
+- Developers who want automatic Wi-Fi fallback + Telegram control
+- Raspberry Pi OS with NetworkManager enabled
+
+---
+
+## 🧩 How It Works (High-Level)
+
+There are **two independent components**:
+
+1. **Auto Wi-Fi Manager**
+   - Runs on boot (systemd)
+   - Tries known Wi-Fi networks automatically
+   - Ensures internet access
+   - Reports status to Telegram
+
+2. **Telegram Control Bot**
+   - Runs continuously
+   - Lets user:
+     - View nearby Wi-Fi networks
+     - Switch networks manually
+     - Enter passwords securely
+
+Both components share the same Wi-Fi manager and configuration.
+
+## ⚙️ Prerequisites
+
+- Raspberry Pi 4
+- Raspberry Pi OS (Bullseye or newer)
+- NetworkManager enabled
+- Python 3.13
+- Packages installed:
+
+```bash
+sudo apt update
+sudo apt install -y network-manager iw python3-pip
+```
 
 ## 🚀 Features
 
@@ -18,8 +60,7 @@ A Python-based Telegram bot for Raspberry Pi 4 that automatically manages Wi-Fi 
 ## 🧠 Auto Connection Logic
 
 1. On boot:
-   - Check for SSID `testtest`
-   - Connect using password `test123456`
+   - Verify internet access
 2. If unavailable:
    - Scan all SSIDs
    - Sort by signal strength
@@ -35,7 +76,7 @@ A Python-based Telegram bot for Raspberry Pi 4 that automatically manages Wi-Fi 
 
 ## 📲 Telegram Commands
 
-### `wifi`
+### `wifi` or `WI-FI`
 Returns a list of available networks:
 
 HomeWiFi - 85% - Known
@@ -54,8 +95,8 @@ Copy code
 
 ## 🧰 Tech Stack
 
-- Python 3.9+
-- python-telegram-bot
+- Python 3.13
+- python-telegram-bot 20.7
 - iw / nmcli
 - systemd
 - Raspberry Pi OS
@@ -65,65 +106,597 @@ Copy code
 ## 📂 Project Structure
 ```bash
 js_bot/
-├── bot/
-│   ├── __init__.py
-│   ├── bot.py
-│   └── config.py
-├── logs/
-├── .env
-├── .gitignore
-├── requirements.txt
-└── README.md
+	README.md
+	requirements.txt
+
+js_bot/
+   bot/
+	   config.py
+   	auto_connect.py
+   	bot.py
+   	config.py
+   	handlers.py
+   	notifier.py
+   	state_manager.py
+   	wifi_manager.py
 ```
 
-yaml
-Copy code
+## 🔁 Systemd Autostart
 
----
+The bot runs as a system service:
 
-## ⚙️ Installation
+- Starts automatically on boot
+- Restarts on crash
+- Runs without user login
+
+Service commands:
+```bash
+sudo systemctl status js-wifi-bot
+sudo systemctl restart js-wifi-bot
+sudo journalctl -u js-wifi-bot -f
+```
+
+Make your systemd service point to auto_connect.py for boot auto-connect:
+```bash
+[Unit]
+Description=JS Wi-Fi Auto Connect
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+User=js
+WorkingDirectory=/home/js/repo/js_bot
+EnvironmentFile=/home/js/repo/js_bot/.env
+ExecStart=/home/js/repo/js_bot/venv/bin/python -m bot.auto_connect
+Restart=always
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target
+```
+
+## Installation
 
 ```bash
-sudo apt install iw network-manager
 pip install -r requirements.txt
-🔐 Environment Variables
-Create .env:
+```
 
-ini
-Copy code
-BOT_TOKEN=your_bot_token
-CHAT_ID=your_chat_id
-🧩 Systemd Service
-bash
-Copy code
-sudo cp service/wifi-bot.service /etc/systemd/system/
-sudo systemctl enable wifi-bot
-sudo systemctl start wifi-bot
-📡 Internet Check
-Ping 8.8.8.8
+## Running
+python -m bot.bot
 
-HTTPS request fallback
+## Current code
+```auto_connect.py
+# bot/auto_connect.py
+from bot.wifi_manager import (
+    scan_wifi,
+    connect_wifi,
+    has_internet,
+    current_connected_ssid,
+)
+from bot.config import KNOWN_WIFI
+from bot.notifier import notify
 
-🛑 Error Handling
-Automatic fallback to previous Wi-Fi
 
-Telegram alerts on failures
+def main():
+    notify("🚀 Auto Wi-Fi manager started")
 
-Logs stored locally
+    # 1️⃣ Check existing internet connection
+    if has_internet():
+        ssid = current_connected_ssid()
+        ssid_text = ssid if ssid else "Unknown"
+        notify(f"🌐 Internet connection exists. Connected Wi-Fi SSID: {ssid_text}")
+        return
 
-📜 License
-MIT
+    notify("⚠️ No internet connection. Searching for known Wi-Fi networks…")
 
-markdown
-Copy code
+    # 2️⃣ Scan and filter known networks
+    networks = scan_wifi()
+    known_networks = [n for n in networks if n["known"]]
 
----
+    if not known_networks:
+        notify("❌ No known Wi-Fi networks found")
+        return
 
-If you want, next I can:
-- Provide **full Python implementation**
-- Generate **systemd service file**
-- Create **Wi-Fi scanning & parsing code**
-- Build **state machine diagram**
-- Prepare **ready-to-push GitHub repo**
+    # 3️⃣ Try known networks by signal strength
+    for net in known_networks:
+        ssid = net["ssid"]
+        password = KNOWN_WIFI.get(ssid)
 
-Just tell me what you want next.
+        notify(f"🔌 Trying {ssid} ({net['signal']}%)")
+
+        if not connect_wifi(ssid, password):
+            notify(f"❌ Connection failed: {ssid}")
+            continue
+
+        if has_internet():
+            notify(f"✅ Internet connection exists. Connected Wi-Fi SSID: {ssid}")
+            return
+
+        notify(f"⚠️ Connected to {ssid} but no internet access")
+
+    # 4️⃣ All attempts failed
+    notify("🚨 No internet connection is available")
+
+
+if __name__ == "__main__":
+    main()
+```
+
+```bot.py
+# bot/bot.py
+from telegram.ext import (
+    ApplicationBuilder,
+    CommandHandler,
+    MessageHandler,
+    filters,
+)
+
+from bot.config import BOT_TOKEN
+from bot.handlers import start, handle_text
+from bot.wifi_manager import scan_wifi, current_connected_ssid, has_internet
+from bot.notifier import notify
+
+
+# New handler for "Wi-Fi" messages
+async def available_wifi(update, context):
+    networks = scan_wifi()
+    current_ssid = current_connected_ssid()
+
+    ssid_dict = {}
+    for net in networks:
+        ssid = net["ssid"]
+        signal = net["signal"]
+        known = net["known"]
+        if ssid not in ssid_dict or signal > ssid_dict[ssid]["signal"]:
+            ssid_dict[ssid] = {"signal": signal, "known": known}
+
+    msg = "📡 Available Wi-Fi networks:\n"
+    for i, (ssid, info) in enumerate(
+        sorted(ssid_dict.items(), key=lambda x: x[1]["signal"], reverse=True),
+        start=1,
+    ):
+        status = "Known" if info["known"] else "Unknown"
+        connected = " (Connected)" if ssid == current_ssid else ""
+        msg += f"{i}. {ssid} ({info['signal']}%) [{status}]{connected}\n"
+
+    await update.message.reply_text(msg)
+
+
+def main():
+    # 🔔 Startup notification
+    notify("🤖 Telegram Wi-Fi Bot started")
+
+    if has_internet():
+        ssid = current_connected_ssid()
+        notify(
+            f"🌐 Internet connection exists. Connected Wi-Fi SSID: {ssid or 'Unknown'}"
+        )
+    else:
+        notify("⚠️ No internet connection")
+
+    app = ApplicationBuilder().token(BOT_TOKEN).build()
+
+    app.add_handler(CommandHandler("start", start))
+    app.add_handler(MessageHandler(filters.Regex("(?i)^wi-?fi$"), available_wifi))
+    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_text))
+
+    print("✅ Telegram Wi-Fi Bot running")
+    app.run_polling()
+
+
+if __name__ == "__main__":
+    main()
+```
+
+```config.py
+# bot/config.py
+import os
+from dotenv import load_dotenv
+
+load_dotenv()
+
+BOT_TOKEN = os.getenv("BOT_TOKEN")
+CHAT_ID = int(os.getenv("CHAT_ID"))
+
+if not BOT_TOKEN:
+    raise RuntimeError("BOT_TOKEN not set")
+
+# Known Wi-Fi networks
+KNOWN_WIFI = {
+    "wls": "12345678",
+    "testtest": "test123456",
+}
+
+INTERNET_CHECK_HOST = "8.8.8.8"
+INTERNET_CHECK_TIMEOUT = 3
+```
+
+```handlers.py
+# bot/handlers.py
+from telegram import Update
+from telegram.ext import ContextTypes
+
+from bot.state_manager import set_state, get_state, clear_state
+from bot import wifi_manager
+
+
+async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    chat_id = update.effective_chat.id
+    clear_state(chat_id)
+
+    await context.bot.send_message(
+        chat_id=chat_id,
+        text=(
+            "👋 Raspberry Pi Wi-Fi Bot is online.\n\n"
+            "Send:\n"
+            "• wifi"
+        )
+    )
+
+
+async def available_wifi(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    chat_id = update.effective_chat.id
+
+    wifi_list = wifi_manager.scan_wifi()
+
+    msg = "📡 wifi networks:\n"
+    for i, w in enumerate(wifi_list, start=1):
+        known = "Known" if w["known"] else "Unknown"
+        msg += f"{i}) {w['ssid']} — {w['signal']}% — {known}\n"
+
+    await context.bot.send_message(chat_id=chat_id, text=msg)
+    set_state(chat_id, "WAIT_WIFI_SELECTION", wifi_list)
+
+
+async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    chat_id = update.effective_chat.id
+    text = update.message.text.strip()
+    state = get_state(chat_id)
+
+    # ---- SELECT WIFI ----
+    if state["action"] == "WAIT_WIFI_SELECTION":
+        if not text.isdigit():
+            await context.bot.send_message(chat_id, "❌ Send a number.")
+            return
+
+        idx = int(text) - 1
+        wifi_list = state["data"]
+
+        if idx < 0 or idx >= len(wifi_list):
+            await context.bot.send_message(chat_id, "❌ Invalid selection.")
+            return
+
+        selected = wifi_list[idx]
+
+        if selected["known"]:
+            await context.bot.send_message(
+                chat_id,
+                f"🔌 Connecting to {selected['ssid']} (known network)…"
+            )
+            wifi_manager.connect_wifi(selected["ssid"])
+            clear_state(chat_id)
+        else:
+            await context.bot.send_message(
+                chat_id,
+                f"🔑 Enter password for {selected['ssid']}:"
+            )
+            set_state(chat_id, "WAIT_WIFI_PASSWORD", selected)
+
+    # ---- PASSWORD ----
+    elif state["action"] == "WAIT_WIFI_PASSWORD":
+        wifi = state["data"]
+        password = text
+
+        await context.bot.send_message(
+            chat_id,
+            f"🔌 Connecting to {wifi['ssid']}…"
+        )
+
+        wifi_manager.connect_wifi(wifi["ssid"], password)
+        clear_state(chat_id)
+
+    # ---- UNKNOWN ----
+    else:
+        await context.bot.send_message(
+            chat_id,
+            "❓ Unknown command. Send 'wifi'."
+        )
+```
+
+```notifier.py
+# bot/notifier.py
+import asyncio
+from telegram import Bot
+from bot.config import BOT_TOKEN, CHAT_ID
+
+
+async def _send(text: str):
+    bot = Bot(token=BOT_TOKEN)
+    await bot.send_message(chat_id=CHAT_ID, text=text)
+
+
+def notify(text: str):
+    try:
+        asyncio.run(_send(text))
+    except RuntimeError:
+        # event loop already running (safe fallback)
+        loop = asyncio.get_event_loop()
+        loop.create_task(_send(text))
+```
+
+```wifi_manager.py
+# bot/wifi_manager.py
+import subprocess
+import time
+import re
+from bot.config import KNOWN_WIFI, INTERNET_CHECK_HOST, INTERNET_CHECK_TIMEOUT
+
+IW_INTERFACE = "wlan0"
+
+
+def scan_wifi():
+    try:
+        result = subprocess.run(
+            ["sudo", "iw", "dev", IW_INTERFACE, "scan"],
+            capture_output=True,
+            text=True,
+            timeout=15,
+        )
+    except Exception:
+        return []
+
+    ssid_map = {}
+    current_signal = None
+
+    for line in result.stdout.splitlines():
+        line = line.strip()
+
+        if line.startswith("signal:"):
+            m = re.search(r"signal:\s*(-?\d+\.\d+)", line)
+            if m:
+                current_signal = float(m.group(1))
+
+        elif line.startswith("SSID:") and current_signal is not None:
+            ssid = line.replace("SSID:", "").strip()
+            if not ssid:
+                continue
+
+            if ssid not in ssid_map or current_signal > ssid_map[ssid]:
+                ssid_map[ssid] = current_signal
+
+            current_signal = None
+
+    networks = []
+    for ssid, rssi in ssid_map.items():
+        networks.append({
+            "ssid": ssid,
+            "signal": _signal_to_percent(int(rssi)),
+            "known": ssid in KNOWN_WIFI,
+        })
+
+    networks.sort(key=lambda x: x["signal"], reverse=True)
+    return networks
+
+
+def connect_wifi(ssid: str, password: str) -> bool:
+    try:
+        # Remove existing connection if present
+        subprocess.run(
+            ["nmcli", "connection", "delete", ssid],
+            capture_output=True
+        )
+
+        cmd = ["nmcli", "dev", "wifi", "connect", ssid, "password", password]
+        result = subprocess.run(cmd, capture_output=True, text=True)
+
+        if result.returncode != 0:
+            return False
+
+        time.sleep(5)
+        return True
+
+    except Exception:
+        return False
+
+
+def has_internet() -> bool:
+    try:
+        result = subprocess.run(
+            ["ping", "-c", "1", "-W", str(INTERNET_CHECK_TIMEOUT), INTERNET_CHECK_HOST],
+            capture_output=True,
+        )
+        return result.returncode == 0
+    except Exception:
+        return False
+
+
+def current_connected_ssid() -> str | None:
+    """
+    Returns the currently connected Wi-Fi SSID, or None if not connected.
+    """
+    try:
+        result = subprocess.run(
+            ["nmcli", "-t", "-f", "ACTIVE,SSID", "dev", "wifi"],
+            capture_output=True,
+            text=True,
+        )
+
+        for line in result.stdout.splitlines():
+            if line.startswith("yes:"):
+                return line.split("yes:")[1].strip()
+
+    except Exception:
+        pass
+
+    return None
+
+
+def _signal_to_percent(rssi: int) -> int:
+    if rssi <= -100:
+        return 0
+    if rssi >= -50:
+        return 100
+    return 2 * (rssi + 100)
+```
+
+```state_manager.py
+# bot/state_manager.py
+# Simple in-memory FSM per chat
+
+_user_states = {}
+
+def set_state(chat_id: int, action: str, data=None):
+    _user_states[chat_id] = {
+        "action": action,
+        "data": data
+    }
+
+def get_state(chat_id: int):
+    return _user_states.get(chat_id, {
+        "action": None,
+        "data": None
+    })
+
+def clear_state(chat_id: int):
+    _user_states.pop(chat_id, None)
+```
+
+```requirements.txt
+# requirements.txt
+python-telegram-bot==20.7
+python-dotenv==1.0.0
+```
+
+## Tasks
+# Milestone 1: Base Project Setup (DONE)
+
+Tasks
+```
+Initialize Python project structure
+Add .gitignore
+Create virtual environment support
+Store secrets (BOT_TOKEN, CHAT_ID) in .env
+Add requirements.txt
+```
+Acceptance
+```
+Project runs on Raspberry Pi 4
+Bot can send a test message to Telegram
+```
+# Milestone 2: Telegram Bot Core (DONE)
+
+Tasks
+```
+Implement Telegram bot using python-telegram-bot
+Implement command handler:
+/start
+Available wi-fi
+Implement message listener for:
+Wi-Fi number selection
+Password input
+```
+Acceptance
+```
+Bot responds to commands
+Bot can send status/error messages
+```
+# Milestone 3: Wi-Fi Scanning & Classification (DONE)
+
+Tasks
+```
+Scan available SSIDs using iw dev wlan0 scan
+Parse:
+SSID name
+Signal strength (RSSI)
+Classify networks:
+Known (password exists in config)
+Unknown (no password)
+Sort by signal strength
+```
+
+Acceptance
+```
+Bot can list available Wi-Fi networks
+Networks are sorted by strength
+Known vs Unknown is shown
+```
+# Milestone 4: Auto-Connect Logic (Boot Script) (DONE)
+
+Tasks
+```
+On boot:
+Verify internet access
+If not found → scan others by signal priority
+Attempt connection in descending signal order
+After connect → verify internet access
+Internet check using:
+ping 8.8.8.8
+or HTTPS request
+On failure:
+Disconnect
+Try next Wi-Fi
+On total failure:
+Send error to Telegram
+```
+
+Acceptance
+```
+Device auto-connects without user input
+Telegram receives success or failure message
+```
+# Milestone 5: Manual Wi-Fi Control via Telegram (INPROGRESS)
+
+Tasks
+```
+Command: Available wi-fi
+Reply format:
+1) HomeWiFi - 82% - Known
+2) CafeNet - 71% - Unknown
+
+Handle reply:
+Number selection
+If Known:
+Connect immediately
+If Unknown:
+Ask for password
+Store temporarily
+Attempt connection
+On failure:
+Notify user
+Reconnect to previous Wi-Fi
+```
+Acceptance
+```
+User can fully control Wi-Fi via Telegram
+Safe rollback on errors
+```
+# Milestone 6: Systemd Autostart (CREATED)
+
+Tasks
+```
+Create systemd service
+Ensure script starts on Pi boot
+Restart on crash
+Log output to file
+```
+Acceptance
+```
+Bot starts automatically on reboot
+Stable long-running behavior
+```
+# Milestone 7: Logging & Error Handling (CREATED)
+
+Tasks
+```
+Add logging module
+Log:
+Scan results
+Connection attempts
+Errors
+Telegram notifications for critical failures
+```
+Acceptance
+```
+Debuggable logs
+Clear Telegram alerts
+```

@@ -1,3 +1,4 @@
+# bot/state_manager.py
 # Simple in-memory FSM per chat
 
 _user_states = {}
