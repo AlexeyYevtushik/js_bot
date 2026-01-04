@@ -91,6 +91,7 @@ python -m bot.bot
 
 ## Current code
 ```auto_connect.py
+# bot/auto_connect.py
 from bot.wifi_manager import scan_wifi, connect_wifi, has_internet
 from bot.config import KNOWN_WIFI
 from bot.notifier import notify
@@ -131,6 +132,7 @@ if __name__ == "__main__":
 ```
 
 ```bot.py
+# bot/bot.py
 from telegram.ext import (
     ApplicationBuilder,
     CommandHandler,
@@ -183,6 +185,7 @@ if __name__ == "__main__":
 ```
 
 ```config.py
+# bot/config.py
 import os
 from dotenv import load_dotenv
 
@@ -205,6 +208,7 @@ INTERNET_CHECK_TIMEOUT = 3
 ```
 
 ```handlers.py
+# bot/handlers.py
 from telegram import Update
 from telegram.ext import ContextTypes
 
@@ -296,6 +300,7 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
 ```
 
 ```notifier.py
+# bot/notifier.py
 import asyncio
 from telegram import Bot
 from bot.config import BOT_TOKEN, CHAT_ID
@@ -316,6 +321,7 @@ def notify(text: str):
 ```
 
 ```wifi_manager.py
+# bot/wifi_manager.py
 import subprocess
 import time
 import re
@@ -408,6 +414,7 @@ def _signal_to_percent(rssi: int) -> int:
 ```
 
 ```state_manager.py
+# bot/state_manager.py
 # Simple in-memory FSM per chat
 
 _user_states = {}
@@ -429,6 +436,7 @@ def clear_state(chat_id: int):
 ```
 
 ```requirements.txt
+# requirements.txt
 python-telegram-bot==20.7
 python-dotenv==1.0.0
 ```

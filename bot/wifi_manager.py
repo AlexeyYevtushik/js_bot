@@ -1,3 +1,4 @@
+# bot/wifi_manager.py
 import subprocess
 import time
 import re

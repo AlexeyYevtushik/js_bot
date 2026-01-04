@@ -1,3 +1,4 @@
+# bot/notifier.py
 import asyncio
 from telegram import Bot
 from bot.config import BOT_TOKEN, CHAT_ID

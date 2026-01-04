@@ -1,3 +1,4 @@
+# bot/auto_connect.py
 from bot.wifi_manager import scan_wifi, connect_wifi, has_internet
 from bot.config import KNOWN_WIFI
 from bot.notifier import notify

@@ -1,3 +1,4 @@
+# bot/bot.py
 from telegram.ext import (
     ApplicationBuilder,
     CommandHandler,
