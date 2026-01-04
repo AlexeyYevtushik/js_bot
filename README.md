@@ -3,6 +3,48 @@
 A Python-based Telegram bot for Raspberry Pi 4 that automatically manages Wi-Fi connections and allows manual control via Telegram.
 
 ---
+## 👤 Who This Project Is For
+
+This project is intended for:
+
+- Raspberry Pi users who run their device headless (no monitor/keyboard)
+- Users who manage Wi-Fi remotely
+- Developers who want automatic Wi-Fi fallback + Telegram control
+- Raspberry Pi OS with NetworkManager enabled
+
+---
+
+## 🧩 How It Works (High-Level)
+
+There are **two independent components**:
+
+1. **Auto Wi-Fi Manager**
+   - Runs on boot (systemd)
+   - Tries known Wi-Fi networks automatically
+   - Ensures internet access
+   - Reports status to Telegram
+
+2. **Telegram Control Bot**
+   - Runs continuously
+   - Lets user:
+     - View nearby Wi-Fi networks
+     - Switch networks manually
+     - Enter passwords securely
+
+Both components share the same Wi-Fi manager and configuration.
+
+## ⚙️ Prerequisites
+
+- Raspberry Pi 4
+- Raspberry Pi OS (Bullseye or newer)
+- NetworkManager enabled
+- Python 3.13
+- Packages installed:
+
+```bash
+sudo apt update
+sudo apt install -y network-manager iw python3-pip
+```
 
 ## 🚀 Features
 
@@ -79,14 +121,44 @@ js_bot/
    	wifi_manager.py
 ```
 
+## 🔁 Systemd Autostart
+
+The bot runs as a system service:
+
+- Starts automatically on boot
+- Restarts on crash
+- Runs without user login
+
+Service commands:
+```bash
+sudo systemctl status js-wifi-bot
+sudo systemctl restart js-wifi-bot
+sudo journalctl -u js-wifi-bot -f
+```
+
+Make your systemd service point to auto_connect.py for boot auto-connect:
+```bash
+[Unit]
+Description=JS Wi-Fi Auto Connect
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+User=js
+WorkingDirectory=/home/js/repo/js_bot
+EnvironmentFile=/home/js/repo/js_bot/.env
+ExecStart=/home/js/repo/js_bot/venv/bin/python -m bot.auto_connect
+Restart=always
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target
+```
+
 ## Installation
 
 ```bash
 pip install -r requirements.txt
-sudo systemctl daemon-reload
-sudo systemctl enable js-wifi-bot
-sudo systemctl restart js-wifi-bot
-
 ```
 
 ## Running
