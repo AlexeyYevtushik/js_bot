@@ -448,192 +448,132 @@ python-dotenv==1.0.0
 # Milestone 1: Base Project Setup (DONE)
 
 Tasks
-
+```
 Initialize Python project structure
-
 Add .gitignore
-
 Create virtual environment support
-
 Store secrets (BOT_TOKEN, CHAT_ID) in .env
-
 Add requirements.txt
-
-
+```
 Acceptance
-
+```
 Project runs on Raspberry Pi 4
-
 Bot can send a test message to Telegram
-
+```
 # Milestone 2: Telegram Bot Core (DONE)
 
 Tasks
-
+```
 Implement Telegram bot using python-telegram-bot
-
 Implement command handler:
-
 /start
-
 Available wi-fi
-
 Implement message listener for:
-
 Wi-Fi number selection
-
 Password input
-
-
+```
 Acceptance
-
+```
 Bot responds to commands
-
 Bot can send status/error messages
-
-Milestone 3: Wi-Fi Scanning & Classification
+```
+# Milestone 3: Wi-Fi Scanning & Classification
 
 Tasks
-
+```
 Scan available SSIDs using iw dev wlan0 scan
-
 Parse:
-
 SSID name
-
 Signal strength (RSSI)
-
 Classify networks:
-
 Known (password exists in config)
-
 Unknown (no password)
-
 Sort by signal strength
-
+```
 
 Acceptance
-
+```
 Bot can list available Wi-Fi networks
-
 Networks are sorted by strength
-
 Known vs Unknown is shown
-
+```
 # Milestone 4: Auto-Connect Logic (Boot Script) (INPROGRESS)
 
 Tasks
+```
 On boot:
-
 Verify internet access
-
 If not found → scan others by signal priority
-
 Attempt connection in descending signal order
-
 After connect → verify internet access
-
 Internet check using:
-
 ping 8.8.8.8
-
 or HTTPS request
-
 On failure:
-
 Disconnect
-
 Try next Wi-Fi
-
 On total failure:
-
 Send error to Telegram
-
+```
 
 Acceptance
-
+```
 Device auto-connects without user input
-
 Telegram receives success or failure message
-
+```
 # Milestone 5: Manual Wi-Fi Control via Telegram (CREATED)
 
 Tasks
-
+```
 Command: Available wi-fi
-
 Reply format:
-
 1) HomeWiFi - 82% - Known
 2) CafeNet - 71% - Unknown
 
 Handle reply:
-
 Number selection
-
 If Known:
-
 Connect immediately
-
 If Unknown:
-
 Ask for password
-
 Store temporarily
-
 Attempt connection
-
 On failure:
-
 Notify user
-
 Reconnect to previous Wi-Fi
-
-
+```
 Acceptance
-
+```
 User can fully control Wi-Fi via Telegram
-
 Safe rollback on errors
-
+```
 # Milestone 6: Systemd Autostart (CREATED)
 
 Tasks
-
+```
 Create systemd service
-
 Ensure script starts on Pi boot
-
 Restart on crash
-
 Log output to file
-
-
+```
 Acceptance
-
+```
 Bot starts automatically on reboot
-
 Stable long-running behavior
-
+```
 # Milestone 7: Logging & Error Handling (CREATED)
 
 Tasks
-
+```
 Add logging module
-
 Log:
-
 Scan results
-
 Connection attempts
-
 Errors
-
 Telegram notifications for critical failures
-
-
+```
 Acceptance
-
+```
 Debuggable logs
-
 Clear Telegram alerts
+```
