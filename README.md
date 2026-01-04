@@ -451,6 +451,7 @@ def scan_wifi():
 
 def connect_wifi(ssid: str, password: str) -> bool:
     try:
+        # Remove existing connection if present
         subprocess.run(
             ["nmcli", "connection", "delete", ssid],
             capture_output=True
@@ -478,6 +479,27 @@ def has_internet() -> bool:
         return result.returncode == 0
     except Exception:
         return False
+
+
+def current_connected_ssid() -> str | None:
+    """
+    Returns the currently connected Wi-Fi SSID, or None if not connected.
+    """
+    try:
+        result = subprocess.run(
+            ["nmcli", "-t", "-f", "ACTIVE,SSID", "dev", "wifi"],
+            capture_output=True,
+            text=True,
+        )
+
+        for line in result.stdout.splitlines():
+            if line.startswith("yes:"):
+                return line.split("yes:")[1].strip()
+
+    except Exception:
+        pass
+
+    return None
 
 
 def _signal_to_percent(rssi: int) -> int:
