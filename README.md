@@ -644,6 +644,11 @@ Acceptance
 Device auto-connects without user input
 Telegram receives success or failure message
 ```
+
+Tests
+```
+Connect without 1 of Known wi-fi connected by default
+```
 # Milestone 5: Manual Wi-Fi Control via Telegram (INPROGRESS)
 
 Tasks
