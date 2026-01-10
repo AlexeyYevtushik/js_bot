@@ -10,7 +10,7 @@ IW_INTERFACE = "wlan0"
 def scan_wifi():
     try:
         result = subprocess.run(
-            ["sudo", "iw", "dev", IW_INTERFACE, "scan"],
+            ["iw", "dev", IW_INTERFACE, "scan"],
             capture_output=True,
             text=True,
             timeout=15,

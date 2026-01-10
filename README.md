@@ -140,19 +140,23 @@ Make your systemd service point to auto_connect.py for boot auto-connect:
 ```bash
 [Unit]
 Description=JS Wi-Fi Auto Connect
-After=network-online.target
-Wants=network-online.target
+After=network.target
+Wants=network.target
 
 [Service]
-User=js
+Type=simple
+# Run as root – REQUIRED for iw / nmcli
 WorkingDirectory=/home/js/repo/js_bot
 EnvironmentFile=/home/js/repo/js_bot/.env
 ExecStart=/home/js/repo/js_bot/venv/bin/python -m bot.auto_connect
 Restart=always
-RestartSec=10
+RestartSec=1000
+StandardOutput=journal
+StandardError=journal
 
 [Install]
 WantedBy=multi-user.target
+
 ```
 
 ## Installation
@@ -166,7 +170,6 @@ python -m bot.bot
 
 ## Current code
 ```auto_connect.py
-# bot/auto_connect.py
 from bot.wifi_manager import (
     scan_wifi,
     connect_wifi,
@@ -176,46 +179,53 @@ from bot.wifi_manager import (
 from bot.config import KNOWN_WIFI
 from bot.notifier import notify
 
+pending_messages = []
+
+def safe_notify(text: str):
+    if has_internet():
+        notify(text)
+        for msg in pending_messages:
+            notify(msg)
+        pending_messages.clear()
+    else:
+        pending_messages.append(text)
+
 
 def main():
-    notify("🚀 Auto Wi-Fi manager started")
+    safe_notify("🚀 Auto Wi-Fi manager started")
 
-    # 1️⃣ Check existing internet connection
+    # 1️⃣ Already online?
     if has_internet():
-        ssid = current_connected_ssid()
-        ssid_text = ssid if ssid else "Unknown"
-        notify(f"🌐 Internet connection exists. Connected Wi-Fi SSID: {ssid_text}")
+        ssid = current_connected_ssid() or "Unknown"
+        safe_notify(f"🌐 Internet connection exists. Connected Wi-Fi SSID: {ssid}")
         return
 
-    notify("⚠️ No internet connection. Searching for known Wi-Fi networks…")
+    safe_notify("⚠️ No internet connection. Searching for known Wi-Fi networks…")
 
-    # 2️⃣ Scan and filter known networks
     networks = scan_wifi()
     known_networks = [n for n in networks if n["known"]]
 
     if not known_networks:
-        notify("❌ No known Wi-Fi networks found")
+        safe_notify("❌ All known Wi-Fi networks failed")
         return
 
-    # 3️⃣ Try known networks by signal strength
     for net in known_networks:
         ssid = net["ssid"]
         password = KNOWN_WIFI.get(ssid)
 
-        notify(f"🔌 Trying {ssid} ({net['signal']}%)")
+        safe_notify(f"🔌 Connecting to SSID \"{ssid}\" ({net['signal']}%)")
 
         if not connect_wifi(ssid, password):
-            notify(f"❌ Connection failed: {ssid}")
+            safe_notify(f"❌ Connection failed: {ssid}")
             continue
 
         if has_internet():
-            notify(f"✅ Internet connection exists. Connected Wi-Fi SSID: {ssid}")
+            safe_notify(f"✅ Internet connection exists on SSID \"{ssid}\"")
             return
 
-        notify(f"⚠️ Connected to {ssid} but no internet access")
+        safe_notify(f"⚠️ No internet connection on SSID \"{ssid}\"")
 
-    # 4️⃣ All attempts failed
-    notify("🚨 No internet connection is available")
+    safe_notify("🚨 All known Wi-Fi networks failed")
 
 
 if __name__ == "__main__":
@@ -437,7 +447,7 @@ IW_INTERFACE = "wlan0"
 def scan_wifi():
     try:
         result = subprocess.run(
-            ["sudo", "iw", "dev", IW_INTERFACE, "scan"],
+            ["iw", "dev", IW_INTERFACE, "scan"],
             capture_output=True,
             text=True,
             timeout=15,
@@ -653,22 +663,26 @@ Connect without 1 of Known wi-fi connected by default
 
 Tasks
 ```
-Command: Available wi-fi
+Command: wi-fi, WIFI, Wifi or wifi 
 Reply format:
-1) HomeWiFi - 82% - Known
-2) CafeNet - 71% - Unknown
+1) Best (default)
+2) wls - 82% - Known (Connected)
+3) testtest - 75% - Known
+4) CafeNet - 71% - Unknown
 
 Handle reply:
-Number selection
+Number selection (or in 30 second - (default))
+If Known (Connected):
+message "Already connected"
 If Known:
 Connect immediately
 If Unknown:
 Ask for password
-Store temporarily
+Store to KNOWN_WIFI (we need to create jsonl for every ssid)
 Attempt connection
 On failure:
 Notify user
-Reconnect to previous Wi-Fi
+Reconnect to Best (default) connects to Wi-Fi by the rules like on startap 
 ```
 Acceptance
 ```
